@@ -5,6 +5,7 @@ require "logstash/inputs/jmx"
 require "logstash/codecs/plain"
 require 'stud/temporary'
 require "jmx4r"
+require 'rb-inotify'
 
 describe LogStash::Inputs::Jmx do
 
