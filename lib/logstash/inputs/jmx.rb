@@ -120,7 +120,7 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
     end
 
     # Validate parameters type in configuration
-    { "host" => String, "port" => Fixnum, "alias" => String }.each do |param, expected_type|
+    { "host" => String, "port" => Integer, "alias" => String }.each do |param, expected_type|
       if conf_hash.has_key?(param) && !conf_hash[param].instance_of?(expected_type)
         validation_errors << BAD_TYPE_CONFIG_PARAMETER % { :param => param, :expected => expected_type, :actual => conf_hash[param].class }
       end
@@ -340,24 +340,28 @@ public
 def run(queue)
   jmx_threads = Hash.new
   stop_events = Hash.new
-  filewatcher = Filewatcher.new(@path)
+  filewatcher = Filewatcher.new("#{@path}/*.json", trap: false)
   fw_thread = nil
   begin
     fw_thread = Thread.new(filewatcher) { |fw|
-      fw.watch { |changes|
-        changes.each do | filename, event |
+      @logger.info("Starting file watcher thread for '#{@path}/*.json'")
+      fw.watch do | events |
+        events.each do | path, event |
+          filename = File.basename(path)
+          @logger.info("(RAW) File #{event}: #{filename}")
           if jmx_threads.has_key?(filename)
             @logger.info("Configuration file removed: #{filename}")
             stop_events[filename].set
             jmx_threads[filename].join
           end
-          if event != :deleted
+          if event != :removed
             @logger.info("Configuration file added: #{filename}")
             stop_events[filename] = Concurrent::Event.new
             jmx_threads[filename] = Thread.new { run_jmx_thread(filename, stop_events[filename], queue) }
           end
         end
-      }
+      end
+      @logger.info("Stopped file watcher thread")
     }
 
     @logger.info("Reading config files in path", :path => @path)
